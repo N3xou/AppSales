@@ -9,6 +9,30 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+def get_costs_summary():
+    # Assume 'additional_costs' collection has docs with fields:
+    # 'category' (one of 'restock', 'shipping', 'extra'), 'amount', 'timestamp'
+
+    costs_docs = db.collection("additional_costs").stream()
+
+    costs_by_month_category = defaultdict(float)
+    for doc in costs_docs:
+        data = doc.to_dict()
+        category = data.get("category", "").lower()
+        amount = data.get("amount", 0)
+        timestamp = data.get("timestamp")
+        if not timestamp or category not in {"restock", "shipping", "extra"}:
+            continue
+        month_str = timestamp.strftime("%Y-%m")
+        costs_by_month_category[(month_str, category)] += amount
+
+    result = []
+    for (month, category), amount in sorted(costs_by_month_category.items()):
+        result.append({"month": month, "category": category.capitalize(), "amount": amount})
+
+    return result
+
 def add_shop(name):
     db.collection("stores").add({"name": name})
 
@@ -108,7 +132,7 @@ def get_stock_summary():
 
     for doc in stock_docs:
         data = doc.to_dict()
-        print("DEBUG stock doc fetched:", data)  # Check what each doc has
+
         category = data.get("category", "Unknown")
         color = data.get("color", "Unknown")
         qty = data.get("qty", 0)
@@ -119,45 +143,59 @@ def get_stock_summary():
 
 
 def get_profits_summary():
-    """
-    Returns list of dicts: [{"month": ..., "profit": float}, ...]
-    Profit = sales - restock_cost - extra_costs per month
-    """
-    # Get sales totals grouped by month
-    sales_summary = get_sales_summary("month")
-    sales_dict = {item["group"]: item["total_sales"] for item in sales_summary}
+    # Fetch all sales, restocks, and additional costs
+    sales_docs = db.collection("sales").stream()
+    restocks_docs = db.collection("stock").stream()
+    costs_docs = db.collection("additional_costs").stream()
 
-    # Get restock and extra costs grouped by month
-    costs_ref = db.collection("costs")
-    costs_docs = costs_ref.stream()
+    # Aggregate sales revenue by month
+    sales_by_month = defaultdict(float)
+    for doc in sales_docs:
+        data = doc.to_dict()
+        price = data.get("price", 0)
+        timestamp = data.get("timestamp")
+        if not timestamp:
+            continue
+        month_str = timestamp.strftime("%Y-%m")
+        sales_by_month[month_str] += price
 
-    costs_dict = defaultdict(lambda: {"restock_cost": 0.0, "extra_costs": 0.0})
+    # Aggregate restock costs by month
+    restocks_by_month = defaultdict(float)
+    for doc in restocks_docs:
+        data = doc.to_dict()
+        cost = data.get("restock_cost", 0)
+        qty = data.get("qty", 0)
+        timestamp = data.get("timestamp")  # Make sure restock docs have timestamp
+        if not timestamp:
+            continue
+        month_str = timestamp.strftime("%Y-%m")
+        restocks_by_month[month_str] += cost * qty
 
+    # Aggregate additional costs by month
+    additional_costs_by_month = defaultdict(float)
     for doc in costs_docs:
         data = doc.to_dict()
-        month = data.get("month", "Unknown")
-        restock_cost = data.get("restock_cost", 0.0)
-        extra_costs = data.get("extra_costs", 0.0)
-        costs_dict[month]["restock_cost"] += restock_cost
-        costs_dict[month]["extra_costs"] += extra_costs
+        amount = data.get("amount", 0)
+        timestamp = data.get("timestamp")
+        if not timestamp:
+            continue
+        month_str = timestamp.strftime("%Y-%m")
+        additional_costs_by_month[month_str] += amount
 
-    # Calculate profits per month
+    # Calculate profits by month = sales - restock costs - additional costs
+    months = set(list(sales_by_month.keys()) + list(restocks_by_month.keys()) + list(additional_costs_by_month.keys()))
     profits = []
-    all_months = set(sales_dict.keys()) | set(costs_dict.keys())
-
-    for month in sorted(all_months):
-        sales = sales_dict.get(month, 0.0)
-        costs = costs_dict.get(month, {"restock_cost": 0.0, "extra_costs": 0.0})
-        profit = sales - costs["restock_cost"] - costs["extra_costs"]
+    for month in sorted(months):
+        total_sales = sales_by_month.get(month, 0)
+        total_restock = restocks_by_month.get(month, 0)
+        total_additional = additional_costs_by_month.get(month, 0)
+        profit = total_sales - total_restock - total_additional
         profits.append({"month": month, "profit": profit})
 
     return profits
 
 def add_store(name):
     db.collection("stores").add({"name": name})
-
-def add_category(name):
-    db.collection("categories").add({"name": name})
 
 def add_color(name):
     db.collection("colors").add({"name": name})
