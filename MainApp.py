@@ -105,7 +105,8 @@ class ShopManagerApp(tk.Tk):
     def ask_restock_quantity(self, category_data):
         self.clear_frame()
         category_name = category_data["name"]
-        default_price = category_data.get("default_restock_price", 0)
+        default_price = category_data.get("default_price", 0)
+        colors = category_data.get("colors", [])
 
         tk.Label(self.main_frame, text=f"Enter number of sets to restock for '{category_name}':",
                  font=("Arial", 14)).pack(pady=10)
@@ -115,22 +116,23 @@ class ShopManagerApp(tk.Tk):
         def submit_restock():
             try:
                 num_sets = int(qty_entry.get())
+                if num_sets <= 0:
+                    raise ValueError("Quantity must be positive")
 
-                # Fetch all colors for this category
-                colors = db.collection("colors").where("category", "==", category_name).stream()
-                total_units = 0
-                for color_doc in colors:
-                    color_data = color_doc.to_dict()
-                    color_name = color_data["name"]
+                total_colors = len(colors)
+                if total_colors == 0:
+                    messagebox.showerror("Error", "No colors found for this category.")
+                    self.show_add_menu()
+                    return
 
-                    # Update stock for each color
-                    stock_ref = db.collection("stock") \
+                # Update stock for each color in the category
+                for color_name in colors:
+                    stock_docs = db.collection("stock") \
                         .where("category", "==", category_name) \
-                        .where("color", "==", color_name) \
-                        .limit(1).stream()
+                        .where("color", "==", color_name).limit(1).stream()
 
                     updated = False
-                    for stock_doc in stock_ref:
+                    for stock_doc in stock_docs:
                         stock = stock_doc.to_dict()
                         new_qty = stock.get("qty", 0) + num_sets
                         db.collection("stock").document(stock_doc.id).update({"qty": new_qty})
@@ -143,10 +145,8 @@ class ShopManagerApp(tk.Tk):
                             "qty": num_sets
                         })
 
-                    total_units += num_sets
-
-                # Log cost
-                total_cost = total_units * default_price
+                # Calculate total cost: sets * number_of_colors * default_price
+                total_cost = num_sets * total_colors * default_price
                 db.collection("additional_costs").add({
                     "category": "restock",
                     "amount": total_cost,
@@ -154,12 +154,13 @@ class ShopManagerApp(tk.Tk):
                 })
 
                 messagebox.showinfo("Success",
-                                    f"{num_sets} sets restocked in '{category_name}' (Total cost: ${total_cost:.2f})")
+                                    f"{num_sets} sets restocked in '{category_name}' for {total_colors} colors.\nTotal cost: ${total_cost:.2f}")
                 self.show_add_menu()
+
             except Exception as e:
                 messagebox.showerror("Error", f"Invalid input: {e}")
 
-        tk.Button(self.main_frame, text="Submit", command=submit_restock).pack(pady=10)
+        tk.Button(self.main_frame, text="Submit", font=("Arial", 14), command=submit_restock).pack(pady=10)
         tk.Button(self.main_frame, text="Back", command=self.restock_set).pack(pady=10)
     def add_new_acc(self):
         self.clear_frame()
