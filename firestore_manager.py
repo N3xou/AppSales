@@ -2,10 +2,20 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 from collections import defaultdict
+import os,sys
+def resource_path(relative_path):
+    # Get absolute path to resource, works for dev and PyInstaller
+    try:
+        base_path = sys._MEIPASS  # PyInstaller temp folder
+    except Exception:
+        base_path = os.path.abspath(".")
 
+    return os.path.join(base_path, relative_path)
+
+firebase_json_path = resource_path("firebase_key.json")
 # Initialize Firebase only once
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_key.json")
+    cred = credentials.Certificate(firebase_json_path)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -36,8 +46,7 @@ def get_costs_summary():
 def add_shop(name):
     db.collection("stores").add({"name": name})
 
-def add_category(name):
-    db.collection("categories").add({"name": name, "colors": []})
+
 
 def add_color_to_category(category_name, color):
     docs = db.collection("categories").where("name", "==", category_name).stream()

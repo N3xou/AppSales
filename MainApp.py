@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from firestore_manager import *
-
+import sys
+import os
 
 class ShopManagerApp(tk.Tk):
     def __init__(self):
@@ -86,12 +87,13 @@ class ShopManagerApp(tk.Tk):
                   command=self.add_additional_cost).pack(fill="x", padx=40, pady=5)
 
         tk.Button(self.main_frame, text="Back to Mode Selection", command=self.show_mode_selection).pack(pady=20)
+
     def restock_set(self):
         self.clear_frame()
         tk.Label(self.main_frame, text="Select Category to Restock:", font=("Arial", 16)).pack(pady=10)
 
-        def choose_category(category):
-            self.ask_restock_quantity(category)
+        def choose_category(category_data):
+            self.ask_restock_quantity(category_data)
 
         categories = db.collection("categories").stream()
         for doc in categories:
@@ -105,7 +107,13 @@ class ShopManagerApp(tk.Tk):
     def ask_restock_quantity(self, category_data):
         self.clear_frame()
         category_name = category_data["name"]
-        default_price = category_data.get("default_restock_price", 0)
+        default_price = category_data.get("default_price", 0)  # fix field name here
+        colors = category_data.get("colors", [])
+
+        if not colors:
+            messagebox.showerror("Error", f"No colors found for category '{category_name}'.")
+            self.restock_set()
+            return
 
         tk.Label(self.main_frame, text=f"Enter number of sets to restock for '{category_name}':",
                  font=("Arial", 14)).pack(pady=10)
@@ -115,22 +123,17 @@ class ShopManagerApp(tk.Tk):
         def submit_restock():
             try:
                 num_sets = int(qty_entry.get())
-
-                # Fetch all colors for this category
-                colors = db.collection("colors").where("category", "==", category_name).stream()
                 total_units = 0
-                for color_doc in colors:
-                    color_data = color_doc.to_dict()
-                    color_name = color_data["name"]
 
+                for color_name in colors:
                     # Update stock for each color
-                    stock_ref = db.collection("stock") \
+                    stock_query = db.collection("stock") \
                         .where("category", "==", category_name) \
                         .where("color", "==", color_name) \
                         .limit(1).stream()
 
                     updated = False
-                    for stock_doc in stock_ref:
+                    for stock_doc in stock_query:
                         stock = stock_doc.to_dict()
                         new_qty = stock.get("qty", 0) + num_sets
                         db.collection("stock").document(stock_doc.id).update({"qty": new_qty})
@@ -147,23 +150,25 @@ class ShopManagerApp(tk.Tk):
 
                 # Log cost
                 total_cost = total_units * default_price
+                from datetime import datetime
                 db.collection("additional_costs").add({
                     "category": "restock",
                     "amount": total_cost,
                     "timestamp": datetime.utcnow()
                 })
 
-                messagebox.showinfo("Success",
-                                    f"{num_sets} sets restocked in '{category_name}' (Total cost: ${total_cost:.2f})")
-                self.show_add_menu()
+                #messagebox.showinfo("Success",
+                #                    f"{num_sets} sets restocked in '{category_name}' (Total cost: ${total_cost:.2f})")
+                self.show_mode_selection()
             except Exception as e:
                 messagebox.showerror("Error", f"Invalid input: {e}")
 
         tk.Button(self.main_frame, text="Submit", command=submit_restock).pack(pady=10)
         tk.Button(self.main_frame, text="Back", command=self.restock_set).pack(pady=10)
+
     def add_new_acc(self):
         self.clear_frame()
-        tk.Label(self.main_frame, text="Enter New Shop Name:", font=("Arial", 14)).pack(pady=10)
+        tk.Label(self.main_frame, text="Enter New Acc Name:", font=("Arial", 14)).pack(pady=10)
         entry = tk.Entry(self.main_frame)
         entry.pack(pady=5)
         tk.Button(self.main_frame, text="Submit", command=lambda: self.submit_new_shop(entry.get())).pack(pady=10)
@@ -172,10 +177,10 @@ class ShopManagerApp(tk.Tk):
     def submit_new_shop(self, name):
         if name.strip():
             add_shop(name.strip())
-            messagebox.showinfo("Success", f"Shop '{name}' added.")
+            #messagebox.showinfo("Success", f"Acc '{name}' added.")
             self.show_add_menu()
         else:
-            messagebox.showerror("Error", "Shop name cannot be empty.")
+            messagebox.showerror("Error", "Acc name cannot be empty.")
 
     def add_new_category(self):
         self.clear_frame()
@@ -210,21 +215,13 @@ class ShopManagerApp(tk.Tk):
                     "name": name,
                     "default_price": price
                 })
-                messagebox.showinfo("Success", f"Category '{name}' added with default price ${price:.2f}")
+                #messagebox.showinfo("Success", f"Category '{name}' added with default price ${price:.2f}")
                 self.show_add_menu()
             except Exception as e:
                 messagebox.showerror("Error", f"Invalid input: {e}")
 
         tk.Button(self.main_frame, text="Submit", font=("Arial", 14), command=submit).pack(pady=10)
         tk.Button(self.main_frame, text="Back", font=("Arial", 14), command=self.show_add_menu).pack(pady=5)
-
-    def submit_new_category(self, name):
-        if name.strip():
-            add_category(name.strip())
-            messagebox.showinfo("Success", f"Category '{name}' added.")
-            self.show_add_menu()
-        else:
-            messagebox.showerror("Error", "Category name cannot be empty.")
 
     def select_category_for_color(self):
         self.clear_frame()
@@ -247,7 +244,7 @@ class ShopManagerApp(tk.Tk):
     def submit_new_color(self, category, color):
         if color.strip():
             add_color_to_category(category, color.strip())
-            messagebox.showinfo("Success", f"Color '{color}' added to category '{category}'.")
+            #messagebox.showinfo("Success", f"Color '{color}' added to category '{category}'.")
             self.show_add_menu()
         else:
             messagebox.showerror("Error", "Color cannot be empty.")
@@ -291,7 +288,7 @@ class ShopManagerApp(tk.Tk):
                 "amount": amount,
                 "timestamp": datetime.utcnow()
             })
-            messagebox.showinfo("Success", f"Additional cost added to '{category}'!")
+            #messagebox.showinfo("Success", f"Additional cost added to '{category}'!")
             self.show_add_menu()
         except Exception as e:
             messagebox.showerror("Error", f"Invalid input: {e}")
@@ -314,7 +311,7 @@ class ShopManagerApp(tk.Tk):
     def show_stores(self):
         self.clear_frame()
         stores = get_all("stores")
-        tk.Label(self.main_frame, text=f"Mode: {self.mode.title()}\nSelect Store:", font=("Arial", 16)).pack(pady=10)
+        tk.Label(self.main_frame, text=f"Mode: {self.mode.title()}\nSelect Acc:", font=("Arial", 16)).pack(pady=10)
         for store in stores:
             btn = tk.Button(self.main_frame, text=store, font=("Arial", 14), height=2,
                             command=lambda s=store: self.select_store(s))
@@ -348,7 +345,7 @@ class ShopManagerApp(tk.Tk):
 
                 # Log sale to Firestore
                 add_sale(self.selected_store, "custom", color, price)
-                messagebox.showinfo("Success", f"Custom sale added for ${price:.2f}")
+                #messagebox.showinfo("Success", f"Custom sale added for ${price:.2f}")
                 self.show_mode_selection()
 
             except Exception as e:
@@ -362,13 +359,13 @@ class ShopManagerApp(tk.Tk):
         categories = get_all("categories")
         title = f"Mode: {self.mode.title()}"
         if self.mode == "sales":
-            title += f"\nStore: {self.selected_store}"
+            title += f"\nAcc: {self.selected_store}"
         title += "\nSelect Category:"
         tk.Label(self.main_frame, text=title, font=("Arial", 16)).pack(pady=10)
 
         # ✅ Add Custom Sale button for sales mode
         if self.mode == "sales":
-            tk.Button(self.main_frame, text="Custom Sale", font=("Arial", 14),
+            tk.Button(self.main_frame, text="Custom Sale", font=("Arial", 14), bg="#007BFF", fg="white",
                       command=self.custom_sale_input).pack(fill="x", padx=20, pady=5)
 
         # Category buttons
@@ -379,7 +376,7 @@ class ShopManagerApp(tk.Tk):
 
         # Back button
         if self.mode == "sales":
-            back_btn = tk.Button(self.main_frame, text="Back to Stores", command=self.show_stores)
+            back_btn = tk.Button(self.main_frame, text="Back to Accs", command=self.show_stores)
         else:
             back_btn = tk.Button(self.main_frame, text="Back to Mode Selection", command=self.show_mode_selection)
         back_btn.pack(pady=15)
@@ -396,7 +393,7 @@ class ShopManagerApp(tk.Tk):
 
         title = f"Mode: {self.mode.title()}"
         if self.mode == "sales":
-            title += f"\nStore: {self.selected_store}"
+            title += f"\nAcc: {self.selected_store}"
         title += f"\nCategory: {self.selected_category}\nSelect Color:"
         tk.Label(self.main_frame, text=title, font=("Arial", 16)).pack(pady=10)
 
@@ -419,7 +416,7 @@ class ShopManagerApp(tk.Tk):
         self.clear_frame()
         title = f"Mode: {self.mode.title()}"
         if self.mode == "sales":
-            title += f"\nStore: {self.selected_store}"
+            title += f"\nAcc: {self.selected_store}"
         title += f"\nCategory: {self.selected_category}\nColor: {self.selected_color}"
         tk.Label(self.main_frame, text=title, font=("Arial", 16)).pack(pady=10)
 
@@ -458,27 +455,115 @@ class ShopManagerApp(tk.Tk):
         self.clear_frame()
         tk.Label(self.main_frame, text="Select Category to Add Stock", font=("Arial", 18)).pack(pady=10)
 
-        categories = [doc.to_dict()["name"] for doc in db.collection("categories").stream()]
-        for cat in categories:
-            tk.Button(self.main_frame, text=cat, font=("Arial", 14), height=2,
-                      command=lambda c=cat: self.select_color_for_stock(c)).pack(fill="x", padx=40, pady=5)
+        categories = list(db.collection("categories").stream())
+        for cat_doc in categories:
+            cat_data = cat_doc.to_dict()
+            category_name = cat_data.get("name", "Unknown")
+            tk.Button(self.main_frame, text=category_name, font=("Arial", 14), height=2,
+                      command=lambda c=cat_data: self.select_color_for_stock(c)).pack(fill="x", padx=40, pady=5)
 
         tk.Button(self.main_frame, text="Back", font=("Arial", 12),
                   command=self.show_add_menu).pack(pady=10)
 
-    def select_color_for_stock(self, category):
+    def select_color_for_stock(self, category_data):
         self.clear_frame()
-        tk.Label(self.main_frame, text=f"Select Color in '{category}'", font=("Arial", 18)).pack(pady=10)
+        category_name = category_data.get("name", "")
+        tk.Label(self.main_frame, text=f"Select Color in '{category_name}'", font=("Arial", 18)).pack(pady=10)
 
-        colors = [doc.to_dict()["color"] for doc in db.collection("colors")
-        .where("category", "==", category).stream()]
+        colors = category_data.get("colors", [])
+        if not colors:
+            messagebox.showerror("Error", f"No colors found in category '{category_name}'.")
+            self.add_stock()
+            return
+
         for color in colors:
             tk.Button(self.main_frame, text=color, font=("Arial", 14), height=2,
-                      command=lambda col=color: self.select_price_for_stock(category, col)).pack(fill="x", padx=40,
-                                                                                                 pady=5)
+                      command=lambda col=color: self.select_quantity_for_stock(category_data, col)).pack(fill="x",
+                                                                                                         padx=40,
+                                                                                                         pady=5)
 
         tk.Button(self.main_frame, text="Back", font=("Arial", 12),
                   command=self.add_stock).pack(pady=10)
+
+    def select_quantity_for_stock(self, category_data, color):
+        self.clear_frame()
+        category_name = category_data.get("name", "")
+        default_price = category_data.get("default_price", 0)
+
+        tk.Label(self.main_frame, text=f"Select Quantity to Add for {category_name} - {color}",
+                 font=("Arial", 18)).pack(pady=10)
+
+        def restock_with_quantity(qty):
+            try:
+                qty = int(qty)
+                if qty <= 0:
+                    raise ValueError("Quantity must be positive.")
+
+                # Query stock for this category/color
+                stock_query = db.collection("stock") \
+                    .where("category", "==", category_name) \
+                    .where("color", "==", color) \
+                    .limit(1).stream()
+
+                updated = False
+                for stock_doc in stock_query:
+                    stock = stock_doc.to_dict()
+                    new_qty = stock.get("qty", 0) + qty
+                    db.collection("stock").document(stock_doc.id).update({"qty": new_qty})
+                    updated = True
+
+                if not updated:
+                    db.collection("stock").add({
+                        "category": category_name,
+                        "color": color,
+                        "qty": qty,
+                        "restock_cost": default_price
+                    })
+
+                # Log restock cost
+                total_cost = qty * default_price
+                from datetime import datetime
+                db.collection("additional_costs").add({
+                    "category": "restock",
+                    "amount": total_cost,
+                    "timestamp": datetime.utcnow()
+                })
+
+                self.add_stock()
+
+            except ValueError as ve:
+                messagebox.showerror("Error", f"Invalid quantity: {ve}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to add stock: {e}")
+
+        # Frame for preset quantity buttons + manual entry
+        qty_frame = tk.Frame(self.main_frame)
+        qty_frame.pack(pady=10)
+
+        # Preset quantity buttons 1 to 5
+        for q in range(1, 6):
+            tk.Button(qty_frame, text=str(q), font=("Arial", 14), width=4,
+                      command=lambda qty=q: restock_with_quantity(qty)).pack(side="left", padx=5)
+
+        # Manual entry label and entry box
+        manual_frame = tk.Frame(self.main_frame)
+        manual_frame.pack(pady=10)
+
+        tk.Label(manual_frame, text="Or enter quantity:", font=("Arial", 14)).pack(side="left", padx=5)
+        qty_entry = tk.Entry(manual_frame, font=("Arial", 14), width=5)
+        qty_entry.pack(side="left", padx=5)
+
+        def submit_manual_qty():
+            qty_val = qty_entry.get().strip()
+            if not qty_val:
+                messagebox.showerror("Error", "Please enter a quantity.")
+                return
+            restock_with_quantity(qty_val)
+
+        tk.Button(manual_frame, text="Submit", font=("Arial", 14), command=submit_manual_qty).pack(side="left", padx=5)
+
+        tk.Button(self.main_frame, text="Back", font=("Arial", 12),
+                  command=lambda: self.select_color_for_stock(category_data)).pack(pady=10)
 
     def select_price_for_stock(self, category, color):
         self.clear_frame()
@@ -494,46 +579,8 @@ class ShopManagerApp(tk.Tk):
         tk.Button(self.main_frame, text="Back", font=("Arial", 12),
                   command=lambda: self.select_color_for_stock(category)).pack(pady=10)
 
-    def restock_and_submit(self, category, color, price):
-        try:
-            # Get number of colors in this category
-            color_docs = list(db.collection("colors")
-                              .where("category", "==", category).stream())
-            num_colors = len(color_docs)
-            if num_colors == 0:
-                raise ValueError("No colors found in this category.")
 
-            # Default set quantity = 1 for each color
-            restock_qty = 1
-            total_cost = restock_qty * num_colors * price
 
-            # Update each color stock
-            for doc in color_docs:
-                col = doc.to_dict()["color"]
-                query = db.collection("stock").where("category", "==", category).where("color", "==", col).stream()
-                updated = False
-                for sdoc in query:
-                    ref = sdoc.reference
-                    current_qty = sdoc.to_dict().get("qty", 0)
-                    ref.update({"qty": current_qty + restock_qty})
-                    updated = True
-                    break
-                if not updated:
-                    db.collection("stock").add({"category": category, "color": col, "qty": restock_qty})
-
-            # Log restock cost
-            from datetime import datetime
-            db.collection("additional_costs").add({
-                "category": "restock",
-                "amount": total_cost,
-                "timestamp": datetime.utcnow()
-            })
-
-            messagebox.showinfo("Success", f"Restocked 1 set of {category} colors for ${total_cost:.2f}")
-            self.show_add_menu()
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Restock failed: {e}")
     def quick_add_sale(self, price):
         try:
             stock_qty = get_stock_for_item(self.selected_category, self.selected_color)
@@ -555,7 +602,7 @@ class ShopManagerApp(tk.Tk):
                 doc.reference.update({"qty": stock_qty - 1})
                 break  # only update the first match
 
-            messagebox.showinfo("Success", f"Sale added for ${price}")
+            #messagebox.showinfo("Success", f"Sale added for ${price}")
             self.show_mode_selection()
         except Exception as e:
             messagebox.showerror("Error", f"Could not add sale: {e}")
@@ -570,7 +617,7 @@ class ShopManagerApp(tk.Tk):
 
             add_sale(self.selected_store, self.selected_category, self.selected_color, price)
             deduct_stock(self.selected_category, self.selected_color, 1)
-            messagebox.showinfo("Success", "Sale added!")
+            #messagebox.showinfo("Success", "Sale added!")
             self.show_mode_selection()
 
         except Exception as e:
@@ -604,7 +651,7 @@ class ShopManagerApp(tk.Tk):
         self.sales_tree = ttk.Treeview(sales_frame, columns=("Month", "Store", "Total Sales"), show='headings',
                                        height=5)
         self.sales_tree.heading("Month", text="Month")
-        self.sales_tree.heading("Store", text="Store")
+        self.sales_tree.heading("Store", text="Acc")
         self.sales_tree.heading("Total Sales", text="Total Sales ($)")
         self.sales_tree.pack(fill="x", expand=False)
 
@@ -627,24 +674,15 @@ class ShopManagerApp(tk.Tk):
 
     def load_sales_data(self):
         data = get_sales_summary("month_store")
-
         # Clear existing rows
         for row in self.sales_tree.get_children():
             self.sales_tree.delete(row)
-
-        if not data:
-            messagebox.showinfo("Info", "No sales data found.")
-            return
 
         # Get current month in "YYYY-MM" format
         current_month = datetime.utcnow().strftime("%Y-%m")
 
         # Filter data for current month only
         current_month_data = [item for item in data if item["month"].startswith(current_month)]
-
-        if not current_month_data:
-            messagebox.showinfo("Info", "No sales data for current month.")
-            return
 
         # Sort by store name or keep as is
         current_month_data_sorted = sorted(current_month_data, key=lambda x: x["store"])
@@ -663,11 +701,11 @@ class ShopManagerApp(tk.Tk):
     def show_sales_info(self):
         self.clear_frame()
 
-        tk.Label(self.main_frame, text="Sales Summary Grouped by Month and Store:", font=("Arial", 14)).pack(pady=5)
+        tk.Label(self.main_frame, text="Sales Summary Grouped by Month and Acc:", font=("Arial", 14)).pack(pady=5)
 
         self.sales_tree = ttk.Treeview(self.main_frame, columns=("Month", "Store", "Total Sales"), show='headings')
         self.sales_tree.heading("Month", text="Month")
-        self.sales_tree.heading("Shop", text="Store")
+        self.sales_tree.heading("Shop", text="Acc")
         self.sales_tree.heading("Total Sales", text="Total Sales ($)")
         self.sales_tree.pack(fill="both", expand=True, pady=10)
 
@@ -749,7 +787,7 @@ class ShopManagerApp(tk.Tk):
                 self.summary_tree.insert("", "end", values=(item["month"], item["category"], f"{item['amount']:.2f}"))
 
         elif selection == "History":
-            self.summary_tree["columns"] = ("Date", "Type", "Shop", "Category", "Color", "Amount ($)")
+            self.summary_tree["columns"] = ("Date", "Type", "Acc", "Category", "Color", "Amount ($)")
             self.summary_tree.heading("#0", text="")
             self.summary_tree.column("#0", width=0, stretch=False)
 
@@ -812,9 +850,6 @@ class ShopManagerApp(tk.Tk):
         self.profits_tree.heading("Profit", text="Profit ($)")
         self.profits_tree.column("#0", width=0, stretch=False)
 
-        if not data:
-            messagebox.showinfo("Info", "No profits data found.")
-            return
 
         # Data already sorted by month in get_profits_summary, just insert
         for item in data:
