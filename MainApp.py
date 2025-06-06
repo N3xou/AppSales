@@ -7,7 +7,7 @@ class ShopManagerApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title("Shop Manager - Sales & Stock & Info")
+        self.title("Shop Manager - Monthly Sales & Stock & Info")
 
         # Desired window size
         window_width = 800
@@ -60,7 +60,7 @@ class ShopManagerApp(tk.Tk):
         add_btn.pack(fill="x", padx=40, pady=10)
 
         profits_info_btn = tk.Button(self.main_frame, text="Profits & Costs", font=("Arial", 14), height=2,
-                                     command=lambda: self.show_profits_info())
+                                     command=lambda: self.show_profits_sales_history())
         profits_info_btn.pack(fill="x", padx=40, pady=5)
 
         info_btn = tk.Button(self.main_frame, text="EXTRA", font=("Arial", 16), height=2,
@@ -73,8 +73,8 @@ class ShopManagerApp(tk.Tk):
         tk.Button(self.main_frame, text="Add Stock", font=("Arial", 14),
                   command=self.add_stock).pack(fill="x", padx=40, pady=5)
 
-        tk.Button(self.main_frame, text="New Shop", font=("Arial", 14),
-                  command=self.add_new_shop).pack(fill="x", padx=40, pady=5)
+        tk.Button(self.main_frame, text="New Acc", font=("Arial", 14),
+                  command=self.add_new_acc).pack(fill="x", padx=40, pady=5)
 
         tk.Button(self.main_frame, text="New category", font=("Arial", 14),
                   command=self.add_new_category).pack(fill="x", padx=40, pady=5)
@@ -100,7 +100,7 @@ class ShopManagerApp(tk.Tk):
             tk.Button(self.main_frame, text=category_name, font=("Arial", 14),
                       command=lambda cat=category_data: choose_category(cat)).pack(pady=5)
 
-        tk.Button(self.main_frame, text="Back", command=self.show_add_menu).pack(pady=10)
+        tk.Button(self.main_frame, text="Back", command=self.show_mode_selection).pack(pady=10)
 
     def ask_restock_quantity(self, category_data):
         self.clear_frame()
@@ -161,7 +161,7 @@ class ShopManagerApp(tk.Tk):
 
         tk.Button(self.main_frame, text="Submit", command=submit_restock).pack(pady=10)
         tk.Button(self.main_frame, text="Back", command=self.restock_set).pack(pady=10)
-    def add_new_shop(self):
+    def add_new_acc(self):
         self.clear_frame()
         tk.Label(self.main_frame, text="Enter New Shop Name:", font=("Arial", 14)).pack(pady=10)
         entry = tk.Entry(self.main_frame)
@@ -326,6 +326,37 @@ class ShopManagerApp(tk.Tk):
         self.selected_store = store
         self.show_categories()
 
+    def custom_sale_input(self):
+        self.clear_frame()
+        tk.Label(self.main_frame, text="Custom Sale", font=("Arial", 16)).pack(pady=10)
+
+        tk.Label(self.main_frame, text="Enter Color Name:", font=("Arial", 12)).pack()
+        color_entry = tk.Entry(self.main_frame, font=("Arial", 12))
+        color_entry.pack(pady=5)
+
+        tk.Label(self.main_frame, text="Enter Price ($):", font=("Arial", 12)).pack()
+        price_entry = tk.Entry(self.main_frame, font=("Arial", 12))
+        price_entry.pack(pady=5)
+
+        def submit_custom_sale():
+            try:
+                color = color_entry.get().strip()
+                price = float(price_entry.get())
+
+                if not color:
+                    raise ValueError("Color cannot be empty.")
+
+                # Log sale to Firestore
+                add_sale(self.selected_store, "custom", color, price)
+                messagebox.showinfo("Success", f"Custom sale added for ${price:.2f}")
+                self.show_mode_selection()
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Invalid input: {e}")
+
+        tk.Button(self.main_frame, text="Submit Sale", command=submit_custom_sale).pack(pady=10)
+        tk.Button(self.main_frame, text="Back", command=self.show_mode_selection).pack(pady=10)
+
     def show_categories(self):
         self.clear_frame()
         categories = get_all("categories")
@@ -334,10 +365,19 @@ class ShopManagerApp(tk.Tk):
             title += f"\nStore: {self.selected_store}"
         title += "\nSelect Category:"
         tk.Label(self.main_frame, text=title, font=("Arial", 16)).pack(pady=10)
+
+        # ✅ Add Custom Sale button for sales mode
+        if self.mode == "sales":
+            tk.Button(self.main_frame, text="Custom Sale", font=("Arial", 14),
+                      command=self.custom_sale_input).pack(fill="x", padx=20, pady=5)
+
+        # Category buttons
         for cat in categories:
             btn = tk.Button(self.main_frame, text=cat, font=("Arial", 14), height=2,
                             command=lambda c=cat: self.select_category(c))
             btn.pack(fill="x", pady=5, padx=20)
+
+        # Back button
         if self.mode == "sales":
             back_btn = tk.Button(self.main_frame, text="Back to Stores", command=self.show_stores)
         else:
@@ -627,11 +667,11 @@ class ShopManagerApp(tk.Tk):
 
         self.sales_tree = ttk.Treeview(self.main_frame, columns=("Month", "Store", "Total Sales"), show='headings')
         self.sales_tree.heading("Month", text="Month")
-        self.sales_tree.heading("Store", text="Store")
+        self.sales_tree.heading("Shop", text="Store")
         self.sales_tree.heading("Total Sales", text="Total Sales ($)")
         self.sales_tree.pack(fill="both", expand=True, pady=10)
 
-        back_btn = tk.Button(self.main_frame, text="Back to INFO", command=self.show_mode_selection)
+        back_btn = tk.Button(self.main_frame, text="Back", command=self.show_mode_selection)
         back_btn.pack(pady=10)
 
         self.load_sales_data()
@@ -656,13 +696,13 @@ class ShopManagerApp(tk.Tk):
 
 
 
-    def show_profits_info(self):
+    def show_profits_sales_history(self):
         self.clear_frame()
         tk.Label(self.main_frame, text="Summary Grouped by Month:", font=("Arial", 14)).pack(pady=5)
 
         # Dropdown to select between 'Profits' and 'Costs'
         self.summary_var = tk.StringVar(value="Profits")
-        summary_options = ["Profits", "Costs"]
+        summary_options = ["Profits", "Costs", "History"]
         summary_menu = ttk.Combobox(self.main_frame, values=summary_options, textvariable=self.summary_var,
                                     state="readonly")
         summary_menu.pack(pady=5)
@@ -672,7 +712,7 @@ class ShopManagerApp(tk.Tk):
         self.summary_tree = ttk.Treeview(self.main_frame)
         self.summary_tree.pack(fill="both", expand=True, pady=10)
 
-        back_btn = tk.Button(self.main_frame, text="Back to INFO", command=self.show_info_options)
+        back_btn = tk.Button(self.main_frame, text="Back", command=self.show_mode_selection)
         back_btn.pack(pady=10)
 
         # Load default data (profits)
@@ -681,7 +721,7 @@ class ShopManagerApp(tk.Tk):
     def load_summary_data(self):
         selection = self.summary_var.get()
 
-        # Clear treeview
+        # Clear existing data and reset tree columns
         for row in self.summary_tree.get_children():
             self.summary_tree.delete(row)
 
@@ -707,6 +747,59 @@ class ShopManagerApp(tk.Tk):
 
             for item in data:
                 self.summary_tree.insert("", "end", values=(item["month"], item["category"], f"{item['amount']:.2f}"))
+
+        elif selection == "History":
+            self.summary_tree["columns"] = ("Date", "Type", "Shop", "Category", "Color", "Amount ($)")
+            self.summary_tree.heading("#0", text="")
+            self.summary_tree.column("#0", width=0, stretch=False)
+
+            for col in self.summary_tree["columns"]:
+                self.summary_tree.heading(col, text=col)
+
+            sales = db.collection("sales").stream()
+            costs = db.collection("additional_costs").stream()
+
+            records = []
+
+            for doc in sales:
+                s = doc.to_dict()
+                ts = s.get("timestamp")
+                records.append({
+                    "type": "Sale",
+                    "shop": s.get("shop", ""),
+                    "category": s.get("category", ""),
+                    "color": s.get("color", ""),
+                    "amount": s.get("price", 0),
+                    "timestamp": ts or datetime.min  # use min date if missing
+                })
+
+            for doc in costs:
+                c = doc.to_dict()
+                ts = c.get("timestamp")
+                records.append({
+                    "type": "Cost",
+                    "shop": "",
+                    "category": c.get("category", ""),
+                    "color": "",
+                    "amount": -abs(c.get("amount", 0)),
+                    "timestamp": ts or datetime.min
+                })
+
+            # Sort by timestamp (descending)
+            records.sort(key=lambda x: x["timestamp"], reverse=True)
+
+            # Define tag styles
+            self.summary_tree.tag_configure("sale", foreground="green")
+            self.summary_tree.tag_configure("cost", foreground="red")
+
+            for r in records:
+                dt = r["timestamp"].strftime("%Y-%m-%d %H:%M") if isinstance(r["timestamp"], datetime) else ""
+                tag = "sale" if r["type"] == "Sale" else "cost"
+                self.summary_tree.insert(
+                    "", "end",
+                    values=(dt, r["type"], r["shop"], r["category"], r["color"], f"{r['amount']:.2f}"),
+                    tags=(tag,)
+                )
 
     def load_profits_data(self):
         data = get_profits_summary()
