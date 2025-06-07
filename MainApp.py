@@ -439,7 +439,7 @@ class ShopManagerApp(tk.Tk):
             self.price_entry.pack(side="left", padx=(0, 10))
 
             # Default price buttons
-            default_prices = [50, 100, 200, 230, 250, 155]
+            default_prices = [45, 60, 100, 200, 230, 250 ]
             for price in default_prices:
                 btn = tk.Button(entry_frame, text=str(price), width=4,
                                 command=lambda p=price: self.quick_add_sale(p))
@@ -570,7 +570,7 @@ class ShopManagerApp(tk.Tk):
         tk.Label(self.main_frame, text=f"Select Restock Price for {category} - {color}", font=("Arial", 18)).pack(
             pady=10)
 
-        default_prices = [19.20, 24.90, 15.00, 12.00, 12.50]
+        default_prices = [64.34, 82.3, 85.8, 102.94]
         for price in default_prices:
             tk.Button(self.main_frame, text=f"${price}", font=("Arial", 14), height=2,
                       command=lambda p=price: self.restock_and_submit(category, color, p)).pack(fill="x", padx=40,
