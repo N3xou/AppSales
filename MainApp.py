@@ -636,35 +636,44 @@ class ShopManagerApp(tk.Tk):
     def show_sales_and_stock_info(self):
         self.clear_frame()
 
-        # Frame for sales (top)
-        sales_frame = tk.Frame(self.main_frame, height=150)  # approx height for 5 rows
+        # Sorting helper
+        def treeview_sort_column(tv, col, reverse):
+            data = [(tv.set(k, col), k) for k in tv.get_children('')]
+            try:
+                data.sort(key=lambda t: float(t[0]) if t[0].replace('.', '', 1).isdigit() else t[0], reverse=reverse)
+            except:
+                data.sort(reverse=reverse)
+            for index, (val, k) in enumerate(data):
+                tv.move(k, '', index)
+            tv.heading(col, command=lambda: treeview_sort_column(tv, col, not reverse))
+
+        # --- Sales Frame ---
+        sales_frame = tk.Frame(self.main_frame, height=150)
         sales_frame.pack(side="top", fill="x", padx=10, pady=(10, 5))
-        sales_frame.pack_propagate(False)  # fix the height
+        sales_frame.pack_propagate(False)
 
-        # Frame for stock (bottom)
-        stock_frame = tk.Frame(self.main_frame)
-        stock_frame.pack(side="top", fill="both", expand=True, padx=10, pady=(5, 10))
-
-        # --- Sales Summary ---
         tk.Label(sales_frame, text="Sales", font=("Arial", 14)).pack(pady=5)
 
         self.sales_tree = ttk.Treeview(sales_frame, columns=("Month", "Store", "Total Sales"), show='headings',
                                        height=5)
-        self.sales_tree.heading("Month", text="Month")
-        self.sales_tree.heading("Store", text="Acc")
-        self.sales_tree.heading("Total Sales", text="Total Sales ($)")
+        for col in ("Month", "Store", "Total Sales"):
+            self.sales_tree.heading(col, text=col,
+                                    command=lambda c=col: treeview_sort_column(self.sales_tree, c, False))
         self.sales_tree.pack(fill="x", expand=False)
 
-        # --- Stock Summary ---
+        # --- Stock Frame ---
+        stock_frame = tk.Frame(self.main_frame)
+        stock_frame.pack(side="top", fill="both", expand=True, padx=10, pady=(5, 10))
+
         tk.Label(stock_frame, text="Stock:", font=("Arial", 14)).pack(pady=5)
 
         self.stock_tree = ttk.Treeview(stock_frame, columns=("Category", "Color", "Quantity"), show='headings')
-        self.stock_tree.heading("Category", text="Category")
-        self.stock_tree.heading("Color", text="Color")
-        self.stock_tree.heading("Quantity", text="Quantity")
+        for col in ("Category", "Color", "Quantity"):
+            self.stock_tree.heading(col, text=col,
+                                    command=lambda c=col: treeview_sort_column(self.stock_tree, c, False))
         self.stock_tree.pack(fill="both", expand=True)
 
-        # Back button below both frames spanning full width
+        # --- Back Button ---
         back_btn = tk.Button(self.main_frame, text="Back to INFO", command=self.show_mode_selection)
         back_btn.pack(pady=10, fill="x", padx=10)
 
@@ -692,11 +701,15 @@ class ShopManagerApp(tk.Tk):
 
     def load_stock_data(self):
         data = get_stock_summary()
+
+        # Clear existing rows
         for row in self.stock_tree.get_children():
             self.stock_tree.delete(row)
 
+        # Insert only items with qty > 0
         for item in data:
-            self.stock_tree.insert("", "end", values=(item["category"], item["color"], item["qty"]))
+            if item.get("qty", 0) > 0:  # ✅ Skip if qty is 0 or missing
+                self.stock_tree.insert("", "end", values=(item["category"], item["color"], item["qty"]))
 
     def show_sales_info(self):
         self.clear_frame()
