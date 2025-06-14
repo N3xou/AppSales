@@ -872,3 +872,4 @@ class ShopManagerApp(tk.Tk):
 if __name__ == "__main__":
     app = ShopManagerApp()
     app.mainloop()
+#nc
